@@ -7,67 +7,76 @@ import time
 import itertools
 import csv
 
-baseurl = 'https://urlfiltering.paloaltonetworks.com/'
-loginurl = urljoin(baseurl, 'accounts/login/')
-queryurl = urljoin(baseurl, 'query/')
-
-driver = webdriver.Chrome()
-driver.get(loginurl)
-
-idx = 0
-chars = itertools.cycle(r'/-\|')
-while True:
-    if idx > 0 and idx % 25 == 0:
-        cookies = driver.get_cookies()
-        if any(cookie['name'] == 'csrftoken' for cookie in cookies):
-            print("ログイン検出、次の処理へ進みます")
-            break
-    sys.stdout.write(f"\rログイン待機中... {next(chars)}")
-    sys.stdout.flush()
-    idx += 1
-    time.sleep(0.2)
-
-
-session = requests.Session()
-cookies = driver.get_cookies()
-for cookie in cookies:
-    session.cookies.set(cookie['name'], cookie['value'])
-
-response = session.get(queryurl)
-soup = BeautifulSoup(response.text, 'html.parser')
-csrf_token = soup.find('input', attrs={'name': 'csrfmiddlewaretoken'})['value']
-
-with open('./urllist.txt', 'r') as f:
-    urllist = f.read().splitlines()
-
-headers={
+BASE_URL = 'https://urlfiltering.paloaltonetworks.com/'
+LOGIN_URL = urljoin(BASE_URL, 'accounts/login/')
+QUERY_URL = urljoin(BASE_URL, 'query/')
+URL_LIST_PATH = './urllist.txt'
+RESULT_CSV_PATH = 'result.csv'
+FIELDNAMES = ['URL', 'Category', 'Risk Level']
+HEADERS = {
     'Content-Type': 'application/x-www-form-urlencoded',
-    'Referer': 'https://urlfiltering.paloaltonetworks.com/query/'
-    }
+    'Referer': QUERY_URL
+}
 
-
-fieldnames = ['URL', 'Category', 'Risk Level']
-with open("result.csv", "w", newline='') as f:
-    writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
-    writer.writeheader()
-    for url in urllist:
-        urldict = {}
-        urldict['URL'] = url
-        data=f'csrfmiddlewaretoken={csrf_token}&url={url}'
-    
-        result = session.post(queryurl, headers=headers, data=data)
-        soup = BeautifulSoup(result.text, 'html.parser')
-        
-        for li in soup.find_all('li'):
-            bc = li.find('b', string='Categories')
-            if bc:
-                category = bc.next_sibling.strip(': \n')
-                print(category)
-                urldict['Category'] = category
-            br = li.find('b', string='Risk Level')
-            if br:
-                risklevel = br.next_sibling.strip(': \n')
-                print(risklevel)
-                urldict['Risk Level'] = risklevel
+def wait_for_login(driver):
+    idx = 0
+    chars = itertools.cycle(r'/-\|')
+    while True:
+        if idx > 0 and idx % 25 == 0:
+            cookies = driver.get_cookies()
+            if any(cookie['name'] == 'csrftoken' for cookie in cookies):
+                print("ログイン検出、次の処理へ進みます")
                 break
-        writer.writerow(urldict)
+        sys.stdout.write(f"\rログイン待機中... {next(chars)}")
+        sys.stdout.flush()
+        idx += 1
+        time.sleep(0.2)
+
+def get_csrf_token(session):
+    response = session.get(QUERY_URL)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    token_tag = soup.find('input', attrs={'name': 'csrfmiddlewaretoken'})
+    return token_tag['value'] if token_tag else ''
+
+def load_url_list(path):
+    with open(path, 'r') as f:
+        return f.read().splitlines()
+
+def extract_info(soup):
+    info = {}
+    for li in soup.find_all('li'):
+        bc = li.find('b', string='Categories')
+        if bc:
+            info['Category'] = bc.next_sibling.strip(': \n')
+        br = li.find('b', string='Risk Level')
+        if br:
+            info['Risk Level'] = br.next_sibling.strip(': \n')
+            break
+    return info
+
+def main():
+    driver = webdriver.Chrome()
+    driver.get(LOGIN_URL)
+    wait_for_login(driver)
+
+    session = requests.Session()
+    for cookie in driver.get_cookies():
+        session.cookies.set(cookie['name'], cookie['value'])
+    driver.quit()
+
+    csrf_token = get_csrf_token(session)
+    urllist = load_url_list(URL_LIST_PATH)
+
+    with open(RESULT_CSV_PATH, "w", newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=FIELDNAMES, extrasaction='ignore')
+        writer.writeheader()
+        for url in urllist:
+            urldict = {'URL': url}
+            data = f'csrfmiddlewaretoken={csrf_token}&url={url}'
+            result = session.post(QUERY_URL, headers=HEADERS, data=data)
+            soup = BeautifulSoup(result.text, 'html.parser')
+            urldict.update(extract_info(soup))
+            writer.writerow(urldict)
+
+if __name__ == '__main__':
+    main()

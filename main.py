@@ -71,12 +71,15 @@ def main():
         writer = csv.DictWriter(f, fieldnames=FIELDNAMES, extrasaction='ignore')
         writer.writeheader()
         for url in urllist:
+            print(f'URL: {url} の情報を取得中...')
             urldict = {'URL': url}
             data = f'csrfmiddlewaretoken={csrf_token}&url={url}'
             result = session.post(QUERY_URL, headers=HEADERS, data=data)
             soup = BeautifulSoup(result.text, 'html.parser')
             urldict.update(extract_info(soup))
+            print("取得完了")
             writer.writerow(urldict)
+        print("全てのURLの取得が完了しました")
 
 if __name__ == '__main__':
     main()

@@ -25,12 +25,17 @@ def wait_for_login(driver):
         if idx > 0 and idx % 25 == 0:
             cookies = driver.get_cookies()
             if any(cookie['name'] == 'csrftoken' for cookie in cookies):
-                print("ログイン検出、次の処理へ進みます")
+                msg = "ログイン検出、次の処理へ進みます"
+                prev_len = print_progress(msg, prev_len)
+                prev_len = len(msg)
                 break
-        sys.stdout.write(f"\rログイン待機中... {next(chars)}")
+        msg = f"ログイン待機中... {next(chars)}"
+        prev_len = len(msg)
+        sys.stdout.write(f"\r{msg}")
         sys.stdout.flush()
         idx += 1
         time.sleep(0.2)
+    return prev_len
 
 def get_csrf_token(session):
     response = session.get(QUERY_URL)
@@ -52,12 +57,26 @@ def extract_info(soup):
         if br:
             info['Risk Level'] = br.next_sibling.strip(': \n')
             break
-    return info
+    token_tag = soup.find('input', attrs={'name': 'csrfmiddlewaretoken'})
+    return info, token_tag['value'] if token_tag else None
+
+def caliculate_prev_len(msg, prev_len):
+    """Calculate the previous length for the progress message."""
+    return max(0, prev_len - len(msg))
+
+def print_progress(msg, prev_len, line_feed=False):
+    """Print the progress message, ensuring it overwrites the previous one."""
+    message = f'\r{msg}{' ' * caliculate_prev_len(msg, prev_len)}'
+    if line_feed:
+        message += '\n'
+    sys.stdout.write(message)
+    sys.stdout.flush()
+    return len(msg)
 
 def main():
     driver = webdriver.Chrome()
     driver.get(LOGIN_URL)
-    wait_for_login(driver)
+    prev_len = wait_for_login(driver)
 
     session = requests.Session()
     for cookie in driver.get_cookies():
@@ -71,15 +90,21 @@ def main():
         writer = csv.DictWriter(f, fieldnames=FIELDNAMES, extrasaction='ignore')
         writer.writeheader()
         for url in urllist:
-            print(f'URL: {url} の情報を取得中...')
+            msg = f'URL: {url} の情報を取得中...'
+            prev_len = print_progress(msg, prev_len)
             urldict = {'URL': url}
             data = f'csrfmiddlewaretoken={csrf_token}&url={url}'
             result = session.post(QUERY_URL, headers=HEADERS, data=data)
             soup = BeautifulSoup(result.text, 'html.parser')
-            urldict.update(extract_info(soup))
-            print("取得完了")
+            info, updated_csrf_token = extract_info(soup)
+            urldict.update(info)
+            csrf_token = updated_csrf_token or csrf_token
+            msg = f'URL: {url} の情報取得完了'
+            prev_len = print_progress(msg, prev_len)
             writer.writerow(urldict)
-        print("全てのURLの取得が完了しました")
+        msg = "全てのURLの取得が完了しました"
+        print_progress(msg, prev_len, True)
+
 
 if __name__ == '__main__':
     main()

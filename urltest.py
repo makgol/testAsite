@@ -102,7 +102,7 @@ def main():
             msg = f'URL: {url} の情報取得完了'
             prev_len = print_progress(msg, prev_len)
             writer.writerow(urldict)
-        msg = "全てのURLの取得が完了しました"
+        msg = f"全てのURLの取得が完了しました。{RESULT_CSV_PATH} を確認してください。"
         print_progress(msg, prev_len, True)
 
 

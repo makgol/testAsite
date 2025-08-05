@@ -12,5 +12,14 @@ curl -sSL https://install.python-poetry.org | python3 -
 - Poetry
 ```
 poetry install
-poetry run python main.py
+poetry run python urltest.py
 ```
+- Python
+```
+pip install -r requirements.txt
+python urltest.py
+```
+
+4. Login to testAsite after chrome opened and connected to authentication page.
+
+5. After login and completed script tasks, result.csv file will be created to current directory.
